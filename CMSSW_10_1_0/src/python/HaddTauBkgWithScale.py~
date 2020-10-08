@@ -1,0 +1,127 @@
+from ROOT import *
+import os, sys
+from glob import glob
+gStyle.SetOptStat(0)
+gROOT.SetBatch(1)
+from time import sleep
+#from utils import *
+from utilitiesII import *
+lumi =  22000.0
+#lumi = 35900.0
+istest = False
+
+########################
+#usage: python/HaddWithScale.py 'haddDir/smallchunks/*Hists_*CUET*.root' 'OutPUT file name'
+#
+#
+#######################
+
+try: inputflist = glob(sys.argv[1])
+except: inputflist = glob('haddeventHists/smallchunks/*Hists_*CUET*.root')
+
+try: fnameOut = sys.argv[2]
+except: fnameOut = 'ScaledHaddEventHistsTEST.root'
+import os, sys
+
+if not os.path.exists("haddeventHists/ScaledHadd_lumixsec"): 
+	os.system('mkdir haddeventHists/ScaledHadd_lumixsec')
+	needshadd = True
+else: needshadd = False
+import os
+if not os.path.exists("haddeventHists/ScaledHadd_lumixsecOnsim"): os.system('mkdir haddeventHists/ScaledHadd_lumixsecOnsim')
+if not os.path.exists("haddeventHists/ScaledHadd_finalcontribs"): os.system('mkdir haddeventHists/ScaledHadd_finalcontribs')
+
+if needshadd:
+
+	keysforxsec = []
+	keysforcontrib = []
+	print 'for inputname in inputflist:'
+	for inputname in inputflist:
+		shortname = inputname.split('SYSHists_')[-1].split('CUET')[0]
+		print 'shortname', shortname
+		if not shortname in keysforxsec: keysforxsec.append(shortname)
+		else: continue	
+		veryshortname = shortname.split('_')[0]
+		print 'veryshortname', veryshortname
+		if not veryshortname in keysforcontrib: keysforcontrib.append(veryshortname)
+	print keysforxsec
+#	exit(0)
+	print 'printed the keys for xSec above'
+	keysforxsec = sorted(keysforxsec)
+	print keysforxsec, 'keysforxsec'
+	print 'printing again after sorting'
+	pause()
+	for xkey in keysforxsec:
+		import os
+		if not os.path.exists("haddeventHists/ScaledHadd_lumixsec/"+xkey+'.root') or True:
+			command = 'python ../python/ahadd.py -f haddeventHists/ScaledHadd_lumixsec/'+xkey+'.root haddeventHists/smallchunks/*Tau*'+xkey+'*.root'
+			print command
+			
+			if not istest: os.system(command)
+	while len(glob('haddeventHists/ScaledHadd_lumixsec/*.root'))<len(keysforxsec):
+		sleep(1.0)
+	print 'escaped the sleep!'
+	print 'hadded all chunks in respective HT ranges'
+	print 'for xkey in keysforxsec:'
+#	exit(0)
+	for xkey in keysforxsec:
+		                print 'xkey', xkey
+				print 'going to scale to lumi file:', 'haddeventHists/ScaledHadd_lumixsec/'+xkey+'.root'
+				#pause()
+				if istest: break
+				
+				fOld = TFile('haddeventHists/ScaledHadd_lumixsec/'+xkey+'.root')
+				hHt = fOld.Get('hHt')
+				try: nentries = hHt.GetEntries()
+				except:
+					print 'stuck at ', xkey, fOld.GetName()
+					exit(0)
+				print 'number of entries here are', nentries
+				keys = sorted(fOld.GetListOfKeys())
+				#pause()
+				fnew = TFile('haddeventHists/ScaledHadd_lumixsecOnsim/'+xkey+'.root','recreate')
+				for key in keys:
+					name = key.GetName()
+					if 'c_' in name: continue
+					if 'hHt'==name: continue
+					h = fOld.Get(name)
+					try:
+						if nentries>0: h.Scale(lumi*1.0/nentries)
+					except:
+						fOld.ls()
+						print 'that didnt work', xkey, name, h
+						exit(0)
+						
+					fnew.cd()
+					h.Write(name)
+				fOld.Close()
+				print 'finished scaling xkey'
+				print 'just created', fnew.GetName()
+				fnew.Close()
+	print 'for contribname in keysforcontrib:'			
+	for contribname in keysforcontrib:
+		command = 'python ../python/ahadd.py -f haddeventHists/ScaledHadd_finalcontribs/'+contribname+'.root haddeventHists/ScaledHadd_lumixsecOnsim/*'+contribname+'*.root'
+		print 'command', command
+		if not istest: os.system(command)
+		print 'just created', 'haddeventHists/ScaledHadd_finalcontribs/'+contribname+'.root'
+	biglumpcommand = 'hadd -f haddeventHists/'+fnameOut+' haddeventHists/ScaledHadd_finalcontribs/*.root'
+	print 'biglumpcommand', biglumpcommand
+	if not istest: os.system(biglumpcommand)
+	print 'just created haddeventHists/'+fnameOut+' : the complete BKG scales to lumi hadded'
+
+#pause()
+			
+if needshadd: 
+	print 'exiting on needshadd'
+#	exit(0)	
+if istest: fname = 'test.root'
+else: fname = 'haddeventHists/'+fnameOut
+
+
+print 'test a'
+import os, sys
+print 'test b'
+print 'test c'
+
+	
+	

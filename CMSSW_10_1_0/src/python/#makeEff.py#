@@ -1,0 +1,61 @@
+from ROOT import *
+from utils import *
+from namelib import *
+import sys
+
+print 'Histogram factory starting........'
+gStyle.SetOptStat(0)
+gStyle.SetFrameBorderMode(0)
+gStyle.SetLegendBorderSize(0)
+gStyle.SetLegendTextSize(0.026)
+try:fname =sys.argv[1]
+except:
+    fname = 'output55.root'
+    print 'files not specified, will run on 4 default files:'
+    print 'catau: 55 cm'
+
+
+f  = TFile(fname)
+
+keys = f.GetListOfKeys()
+
+c1 = mkcanvas('c1')
+
+namelist = []
+
+
+
+for key in keys:
+    name = key.GetName()
+    print name
+    if not ('Tag' in name):continue
+    hpass    = f.Get(name)
+    hAll    = f.Get(name.replace('Tag',''))
+
+    histoStyler(hpass,kGreen+1)
+    hpass.GetXaxis().SetTitle(namelib[name[1:].replace('Tag','')])
+
+#    hpass.Divide(hAll)                                                                                                                                        
+
+    leg = TLegend(0.17,0.67,0.51,0.89)
+    leg.SetHeader("Signal point (ctau,mass)")
+    hpass.GetYaxis().SetTitle('efficiency #epsilon')
+    hpass.GetYaxis().SetRangeUser(0,1.25)
+    stamp(1)
+
+
+    eff =TEfficiency(hpass,hAll)
+    eff.SetLineWidth(1)
+    eff.SetLineStyle(2)
+    eff.SetMarkerStyle(22)
+    eff.SetMarkerColor(1)
+
+    leg.AddEntry(eff,"55 cm ,1100 GeV ","lep")
+    leg.AddEntry(eff2,"90 cm,500 GeV","lep")
+    leg.AddEntry(eff3,"10  cm,1200 GeV","lep")
+    leg.AddEntry(eff4,"22 cm,900 GeV","lep")
+    hpass.SetTitle("Detecting disappearing tracks from gen information")
+    hpass.Reset()
+    hpass.Draw()
+    eff.Draw('same')   #cool trick                                                                                                                            
+

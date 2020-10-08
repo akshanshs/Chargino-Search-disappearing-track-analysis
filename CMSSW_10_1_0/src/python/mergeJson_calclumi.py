@@ -1,0 +1,86 @@
+#!/bin/env python
+import os, glob
+from optparse import OptionParser
+import commands
+from natsort import natsorted, ns
+import sys
+
+
+
+try:folder =sys.argv[1]
+except:
+    folder = 'PromptHists'
+    print 'no folder specified: look in default folder'
+
+print 'merging jsons in folder:', folder
+# merge lumo folder specified isection JSON:
+print "merging jsons..."
+
+os.system("mkdir -p %s_merged" % folder)  # creating dir for merged json
+
+def get_json(folder, years = ["2016"], datastreams = ["SingleElectron"]):
+
+    json_cleaning = True
+
+    for year in years:
+        for datastream in datastreams:
+        
+            print "Doing datastream Run%s_%s" % (year, datastream)
+        
+            combined_json = {}
+            filelist = sorted(glob.glob("%s/*Run%s*%s*json" % (folder, year, datastream)))
+            
+            for i_ifile, ifile in enumerate(filelist):
+                if i_ifile % 100 == 0:
+                     sys.stderr.write("%s/%s\n" % (i_ifile, len(filelist)))
+                idict = ""
+                with open(ifile, "r") as fin:
+                    idict = fin.read()
+                idict = eval(idict) 
+                for run in idict:
+                    if run not in combined_json:
+                        combined_json[run] = []
+                    combined_json[run] += idict[run]
+                    combined_json[run] = natsorted(combined_json[run])
+            
+                    if json_cleaning:
+                        #test for overlap:
+                        indices_to_be_deleted = []
+                        if len(combined_json[run])>1:
+                            for i in range(1, len(combined_json[run])):
+                                
+                                if combined_json[run][i-1][1] >= combined_json[run][i][1]:
+                                    #print "overlap", combined_json[run][i-1], combined_json[run][i]
+                                    #print "removing", combined_json[run][i]
+                                    indices_to_be_deleted.append(i)
+                                elif combined_json[run][i-1][1] >= combined_json[run][i][0]:
+                                    #print "overlap", combined_json[run][i-1], combined_json[run][i]
+                                    combined_json[run][i-1][1] = combined_json[run][i][1]
+                                    indices_to_be_deleted.append(i)
+                                    #print "removing", combined_json[run][i], "keeping", combined_json[run][i-1]
+                        
+                        cleaned_list = []
+                        for i in range(len(combined_json[run])):
+                            if i not in indices_to_be_deleted:
+                                cleaned_list.append(combined_json[run][i])
+              
+                        combined_json[run] = cleaned_list
+            
+            #if json_cleaning:
+            #    # compact lumisections:
+            #    combined_json_compacted = []
+            #    for i in range(len(combined_json[run])):
+            #        if len(combined_json_compacted) == 0:
+            #            combined_json_compacted.append()
+            
+            combined_json_text = str(combined_json).replace("'", '"')
+            filename = "%s_merged/Run%s_%s.json" % (folder, year, datastream)
+        
+            with open(filename, "w") as fout:
+                fout.write(combined_json_text)
+        
+                print "%s written" % filename
+      
+get_json(folder, years = ["2016"], datastreams = ["MET"])
+#get_json(folder, years = ["2016"], datastreams = ["SingleElectron","SingleMuon"])
+#get_json(folder, years = ["2016", "2017", "2018"], datastreams = ["JetHT", "MET", "SingleElectron", "SingleMuon"])

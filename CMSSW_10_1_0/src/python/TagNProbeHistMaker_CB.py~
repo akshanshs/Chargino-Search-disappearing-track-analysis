@@ -1,0 +1,675 @@
+from ROOT import *
+import sys
+import numpy as np
+from glob import glob
+from utilitiesII import *
+import math
+gROOT.SetBatch()
+gROOT.SetStyle('Plain')
+
+BTAG_CSV = 0.8484
+
+GenOnly = False
+GenLepsNecessary = False ## similar condition ;aid in Prompt HJistmaker with bool closuremode
+
+RelaxGenKin = True
+verbose = False
+SmearLeps = False
+
+try: inputFileNames = sys.argv[1]
+except: 
+#    inputFileNames = "/pnfs/desy.de/cms/tier2/store/user/sbein/NtupleHub/Production2016v2/Summer16.WJetsToLNu_TuneCUETP8M1_13TeV-madgraphMLM-pythia8_ext2_285_RA2AnalysisTree.root"
+#    inputFileNames = "/pnfs/desy.de/cms/tier2/store/user/sbein/NtupleHub/Production2016v2/Summer16.WJetsToLNu_HT-1200To2500_TuneCUETP8M1_13TeV-madgraphMLM-pythia8_ext1_88_RA2AnalysisTree.root"
+    inputFileNames = "/pnfs/desy.de/cms/tier2/store/user/sbein/NtupleHub/Production2016v2/Summer16.DYJetsToLL_M-50_TuneCUETP8M1_13TeV-madgraphMLM-pythia8_ext1_391_RA2AnalysisTree.root"
+inputFiles = glob(inputFileNames)
+x_ = len(inputFiles)
+print 'going to analyze events in', inputFileNames
+
+
+if 'Run20' in inputFileNames: isdata = True  # for DATA 
+else: isdata = False
+
+if not isdata:
+    if 'TTJets_TuneCUET' in inputFileNames:  madranges = [(0,600),(800,1200)]
+    elif 'DYJetsToLL_M-50_TuneCUETP8M1' in inputFileNames: madranges = [(0, 100)]
+    elif 'TTJets_HT' in inputFileNames: madranges = [(600,inf)]
+    elif 'WJetsToLNu_TuneCUET' in inputFileNames: madranges = [(0, 100), (600,800)]
+    elif 'WJetsToLNu_HT' in inputFileNames: madranges = [(100, inf)]
+    else: madranges = [(0, inf)]
+
+
+
+#trigger names
+
+ElectronTriggers = [14, 15, 16, 17, 18, 19, 20, 21]
+MuonTriggers = [24,25,26,27,28,30,31,32]
+
+
+c = TChain("TreeMaker2/PreSelection")
+#fname = '/nfs/dust/cms/user/singha/LLCh/BACKGROUNDII/CMSSW_8_0_20/src/MCTemplatesBinned/BinnedTemplatesIIDY_WJ_TT.root'
+#if not isdata: fname = '/nfs/dust/cms/user/singha/LLCh/BACKGROUNDIII/CMSSW_10_1_0/src/usefulfiles/DataDrivenSmear_2016MC.root'
+#if isdata: fname = '/nfs/dust/cms/user/singha/LLCh/BACKGROUNDIII/CMSSW_10_1_0/src/usefulfiles/DataDrivenSmear_2016Data.root'
+
+if not isdata:
+    fnameML = '/nfs/dust/cms/user/singha/LLCh/BACKGROUNDIII/CMSSW_10_1_0/src/usefulfiles/DataDrivenSmear_DYJets_PixAndStrips.root'  
+    fnameS  = '/nfs/dust/cms/user/singha/LLCh/BACKGROUNDIII/CMSSW_10_1_0/src/usefulfiles/DataDrivenSmear_DYJets_PixOnly.root'
+if isdata:
+    fnameML = '/nfs/dust/cms/user/singha/LLCh/BACKGROUNDIII/CMSSW_10_1_0/src/usefulfiles/DataDrivenSmear_Run2016_PixAndStrips.root' 
+    fnameS  = '/nfs/dust/cms/user/singha/LLCh/BACKGROUNDIII/CMSSW_10_1_0/src/usefulfiles/DataDrivenSmear_Run2016_PixAndStrips.root' 
+#'/nfs/dust/cms/user/singha/LLCh/BACKGROUNDIII/CMSSW_10_1_0/src/usefulfiles/DataDrivenSmear_Run2016_PixOnly.root'
+
+fSmearS  = TFile(fnameS)
+fSmearML  = TFile(fnameML)
+
+hEtaVsPhiDT = TH2F('hEtaVsPhiDT','hEtaVsPhiDT',160,-3.2,3.2,250,-2.5,2.5)
+fMask = TFile('/nfs/dust/cms/user/singha/LLCh/BACKGROUNDIII/CMSSW_10_1_0/src/usefulfiles/Mask6mar.root')
+fMask.ls()
+if isdata : hMask = fMask.Get('hEtaVsPhiDT_maskData-2016Data-2016')
+else: hMask = ''
+        #hMask = fMask.Get('hEtaVsPhiDT_maskRun2016')                                                                 hMask = ''
+
+
+
+#=====This sets up the smearing
+dResponseHist = {}
+dResponseHist_el = {}
+dResponseHist_mu = {}
+
+for iPtBinEdge, PtBinEdge in enumerate(PtBinEdgesForSmearing[:-1]):
+    for iEtaBinEdge, EtaBinEdge_ in enumerate(EtaBinEdgesForSmearing[:-1]):
+       newHistKey = ((EtaBinEdge_,EtaBinEdgesForSmearing[iEtaBinEdge + 1]),(PtBinEdge,PtBinEdgesForSmearing[iPtBinEdge + 1]))
+#       dResponseHist[newHistKey] = fSmear.Get("htrkresp"+str(newHistKey))    
+       dResponseHist_el[newHistKey] = fSmearML.Get("htrkresp"+str(newHistKey)+'El')
+       dResponseHist_mu[newHistKey] = fSmearS.Get("htrkresp"+str(newHistKey)+'Mu')
+       
+print 'smearing factors', dResponseHist_el
+def getSmearFactor(Eta, Pt, dResponseHist):
+    for histkey in  dResponseHist:
+       if abs(Eta) > histkey[0][0] and abs(Eta) < histkey[0][1] and Pt > histkey[1][0] and Pt < histkey[1][1]:
+          SF_trk = 10**(dResponseHist[histkey].GetRandom())
+#          return 1   #trying on DATA without smearing
+          return SF_trk #/SF_ele
+    print 'returning 1'
+    return 1
+
+hHt                  = makeTh1("hHt","HT for number of events", 250,0,5000)
+hHtWeighted          = makeTh1("hHtWeighted","HT for number of events", 250,0,5000)
+hElTagPt             = makeTh1VB("hElTagPt"  , "pt of the ElTags", len(PtBinEdges)-1,PtBinEdges)
+hElTagEta            = makeTh1VB("hElTagEta"  , "Eta of the ElTags", len(EtaBinEdges)-1,EtaBinEdges)
+
+hMuTagPt             = makeTh1VB("hMuTagPt"  , "pt of the MuTags", len(PtBinEdges)-1,PtBinEdges)
+hMuTagEta            = makeTh1VB("hMuTagEta"  , "Eta of the MuTags", len(EtaBinEdges)-1,EtaBinEdges)
+
+hGenPtvsResp         = makeTh2_("hGenPtvsResp","hGenPtvsResp",50, 10, 400, 20, -2 ,3)    
+hPtvsEta_RECOden     = makeTh2VB("hPtvsEta_RECOden","hPtvsEta_RECOden",len(PtBinEdges)-1,np.asarray(PtBinEdges, 'd'), len(EtaBinEdges)-1,np.asarray(EtaBinEdges, 'd'))
+hPtvsEta_DTnum       = makeTh2VB("hPtvsEta_DTnum","hPtvsEta_DTnum",len(PtBinEdges)-1,np.asarray(PtBinEdges, 'd'), len(EtaBinEdges)-1,np.asarray(EtaBinEdges, 'd'))
+hGenPtvsEta_RECOden  = makeTh2VB("hGenPtvsEta_RECOden","hGenPtvsEta_RECOden",len(PtBinEdges)-1,np.asarray(PtBinEdges, 'd'), len(EtaBinEdges)-1,np.asarray(EtaBinEdges, 'd'))
+hGenPtvsEta_DTnum    = makeTh2VB("hGenPtvsEta_DTnum","hGenPtvsEta_DTnum",len(PtBinEdges)-1,np.asarray(PtBinEdges, 'd'), len(EtaBinEdges)-1,np.asarray(EtaBinEdges, 'd'))
+
+hbJets               = makeTh1("hbJets","B nits in disptrack event",10,0,10)
+hdPhi                = makeTh1("hdPhi","dPhi between disptrack and MET",50,-.001,3.2)
+hdPhivsPt            = makeTh2_("hdPhivsPt","hdPhivsPt",30, 10, 750, 50, -.001 ,3.2)
+
+calovseta = TH2D("calovseta","calovseta" ,  150, -2.5, 2.5, 200, 1, 100)
+calovseta_paslep = TH2D("calovseta_paslep","calovseta_paslep" ,  150, -2.5, 2.5, 200, 1, 100)
+
+
+#=====This sets up histograms for the pT response of the tracks
+dProbeElTrkResponseDT_ = {}
+dProbeElTrkResponseRECO_= {}
+dProbeMuTrkResponseDT_ = {}
+dProbeMuTrkResponseRECO_= {}
+for iPtBin, PtBin in enumerate(PtBinEdges[:-1]):
+    for iEtaBin, EtaBin in enumerate(EtaBinEdges[:-1]):
+       newHistKey = ((EtaBin,EtaBinEdges[iEtaBin + 1]),(PtBin,PtBinEdges[iPtBin + 1]))    
+       specialpart = '_eta'+str(newHistKey).replace('), (', '_pt').replace('(','').replace(')','').replace(', ','to')
+       dProbeElTrkResponseDT_[newHistKey] = makeTh1("hProbeElTrkrespDT"+specialpart,"hProbeElTrkrespDT"+specialpart, 100,-2,2)    
+       histoStyler(dProbeElTrkResponseDT_[newHistKey], 1)
+       dProbeElTrkResponseRECO_[newHistKey] = makeTh1("hProbeElTrkrespRECO"+specialpart,"hProbeElTrkrespRECO"+specialpart, 100,-2,2)    
+       histoStyler(dProbeElTrkResponseRECO_[newHistKey], 1)       
+       
+       dProbeMuTrkResponseDT_[newHistKey] = makeTh1("hProbeMuTrkrespDT"+specialpart,"hProbeMuTrkrespDT"+specialpart, 100,-2,2)    
+       histoStyler(dProbeMuTrkResponseDT_[newHistKey], 1)
+       dProbeMuTrkResponseRECO_[newHistKey] = makeTh1("hProbeMuTrkrespRECO"+specialpart,"hProbeMuTrkrespRECO"+specialpart, 100,-2,2)    
+       histoStyler(dProbeMuTrkResponseRECO_[newHistKey], 1)             
+
+#=====This sets up histograms for the invariant mass and kappas    
+dInvMassElRECOHist = {}
+dInvMassElDTHist = {}
+hElProbePt_DTnums = {}
+hElProbePt_RECOdens = {}
+hGenElProbePt_DTnums = {}
+hGenElProbePt_RECOdens = {}
+
+dInvMassMuRECOHist = {}
+dInvMassMuDTHist = {}
+hMuProbePt_DTnums = {}
+hMuProbePt_RECOdens = {}
+hGenMuProbePt_DTnums = {}
+hGenMuProbePt_RECOdens = {}
+
+for iEtaBin, EtaBin in enumerate(EtaBinEdges[:-1]):
+    etakey = (EtaBin,EtaBinEdges[iEtaBin + 1])
+    specialpart = '_eta'+str(etakey).replace('(','').replace(')','').replace(', ','to')
+    hElProbePt_DTnums[etakey] = makeTh1VB("hElProbePtDT"+specialpart+"_num", "pt of the ElProbes", len(PtBinEdges)-1,PtBinEdges)
+    hElProbePt_RECOdens[etakey]    = makeTh1VB("hElProbePtRECO"+specialpart+"_den", "pt of the ElProbes", len(PtBinEdges)-1,PtBinEdges)
+    hGenElProbePt_DTnums[etakey] = makeTh1VB("hGenElProbePtDT"+specialpart+"_num", "pt of the ElProbes", len(PtBinEdges)-1,PtBinEdges)
+    hGenElProbePt_RECOdens[etakey]    = makeTh1VB("hGenElProbePtRECO"+specialpart+"_den", "pt of the ElProbes", len(PtBinEdges)-1,PtBinEdges)
+    hMuProbePt_DTnums[etakey] = makeTh1VB("hMuProbePtDT"+specialpart+"_num", "pt of the MuProbes", len(PtBinEdges)-1,PtBinEdges)
+    hMuProbePt_RECOdens[etakey]    = makeTh1VB("hMuProbePtRECO"+specialpart+"_den", "pt of the MuProbes", len(PtBinEdges)-1,PtBinEdges)
+    hGenMuProbePt_DTnums[etakey] = makeTh1VB("hGenMuProbePtDT"+specialpart+"_num", "pt of the MuProbes", len(PtBinEdges)-1,PtBinEdges)
+    hGenMuProbePt_RECOdens[etakey]    = makeTh1VB("hGenMuProbePtRECO"+specialpart+"_den", "pt of the MuProbes", len(PtBinEdges)-1,PtBinEdges)    
+       
+    for iPtBin, PtBin in enumerate(PtBinEdges[:-1]):
+       newHistKey = ((EtaBin,EtaBinEdges[iEtaBin + 1]),(PtBin,PtBinEdges[iPtBin + 1]))
+       specialpart = '_eta'+str(newHistKey).replace('), (', '_pt').replace('(','').replace(')','').replace(', ','to')
+       dInvMassElRECOHist[newHistKey] = makeTh1("hInvMassEl"+specialpart+"_RECOden"  , "hInvMassEl"+specialpart+"_RECOden", 40, 60, 120)
+       histoStyler(dInvMassElRECOHist[newHistKey], 1)
+       newHistKey = ((EtaBin,EtaBinEdges[iEtaBin + 1]),(PtBin,PtBinEdges[iPtBin + 1]))
+       dInvMassElDTHist[newHistKey] = makeTh1("hInvMassEl"+specialpart+"_DTnum"  , "hInvMassEl"+specialpart+"_DTnum", 40, 60, 120)
+       histoStyler(dInvMassElDTHist[newHistKey], 1)
+       dInvMassMuRECOHist[newHistKey] = makeTh1("hInvMassMu"+specialpart+"_RECOden"  , "hInvMassMu"+specialpart+"_RECOden", 40, 60, 120)
+       histoStyler(dInvMassMuRECOHist[newHistKey], 1)
+       newHistKey = ((EtaBin,EtaBinEdges[iEtaBin + 1]),(PtBin,PtBinEdges[iPtBin + 1]))
+       dInvMassMuDTHist[newHistKey] = makeTh1("hInvMassMu"+specialpart+"_DTnum"  , "hInvMassMu"+specialpart+"_DTnum", 40, 60, 120)
+       histoStyler(dInvMassMuDTHist[newHistKey], 1)       
+
+def isGenMatched(lep, pdgid):
+    for igenm, genm in enumerate(c.GenParticles):
+       if not genm.Pt() > 5: continue
+       #if not abs(c.GenParticles_ParentId[igenm]) == 23: continue
+       if not (abs(c.GenParticles_PdgId[igenm]) == pdgid and c.GenParticles_Status[igenm] == 1):continue
+       drm = genm.DeltaR(lep)
+       if drm < .01: return genm.Pt()
+    return 0
+
+
+def TriggerResult(trigger):
+    for i, index in enumerate(trigger):
+        if c.TriggerPass[index] ==1: return True
+    return False
+
+for f in inputFiles:
+    print 'adding file:', f
+    c.Add(f)
+nentries = c.GetEntries()
+c.Show(0)
+print nentries, ' events to be analyzed'
+verbosity = 10000
+identifier = inputFiles[0][inputFiles[0].rfind('/')+1:].replace('.root','').replace('Summer16.','').replace('RA2AnalysisTree','')
+identifier+='nFiles'+str(len(inputFiles))
+
+beforejet = 0
+afterjet = 0
+Pt_threshold = 30
+check = 0  # checking total number of electrons with the promptBkgscript to check the consistency
+for ientry in range(nentries):
+    if verbose:
+       if not ientry in [670]: continue
+    if ientry%verbosity==0: print 'now processing event number', ientry, 'of', nentries
+    c.GetEntry(ientry)
+    if isdata: weight = 1
+    else: weight =  1 #  c.CrossSection*c.puWeight*1 #c.CrossSection #c.puWeight  #c.CrossSection #c.puWeight
+#    weight = 1 #(c.CrossSection*35.9)
+    fillth1(hHt, c.HT, 1)
+    fillth1(hHtWeighted, c.HT, weight)
+    TagPt  =  0
+    TagEta  =  0
+    ProbePt  =  0
+    ProbeEta = 0
+    probeTlv = TLorentzVector()
+    probeTlv.SetPxPyPzE(0, 0, 0, 0)
+    
+    if not isdata: 
+        isValidHtRange = False
+        for madrange in madranges:
+            if (c.madHT>madrange[0] and c.madHT<madrange[1]):
+                isValidHtRange = True
+                break
+    else : isValidHtRange = True
+    if not isValidHtRange: continue
+
+    
+    genels = []
+    genmus = []  
+    if not isdata:     
+        for igp, gp in enumerate(c.GenParticles):
+            if not gp.Pt()>5: continue       
+            if not (abs(c.GenParticles_PdgId[igp])==11 or abs(c.GenParticles_PdgId[igp])==13) : continue
+            if not c.GenParticles_Status[igp]==1 : continue          
+            if not abs(gp.Eta())<2.4: continue
+            if not (abs(gp.Eta())<1.445 or abs(gp.Eta())>1.56): continue                    
+            if abs(c.GenParticles_PdgId[igp])==11: genels.append([gp,igp])
+            if abs(c.GenParticles_PdgId[igp])==13: genmus.append([gp,igp])          
+            if GenLepsNecessary:
+                if not (len(genels)>1): continue # or len(genmus) ==1): continue  require len(genels)>0 for Wjets sample  
+                if verbose: print 'passed presence of genleps'
+    if isdata:
+        if (TriggerResult(ElectronTriggers) or TriggerResult(MuonTriggers) ) == False: continue
+
+    if not passesUniversalSelection(c): continue   # all the filters and cal/Pf met ratio < 2 too
+#    if c.BTags > 0: continue
+#    if isdata:
+#        for itrig in range(len(c.TriggerPass)):
+#            print  'Trigger:' , c.TriggerNames[itrig] , c.TriggerPrescales[itrig], itrig #'triindex', itrig, 'name',
+#            print '*='*10
+#        pause()
+    if not c.CaloMET/c.MET<5.0: continue
+    if verbose: print 'passed calo met and pfmet relation'
+
+    nJets = []
+    drjet = 99
+    adjustedBTags = 0
+    for ijet, jet in enumerate(c.Jets):
+        if not c.Jets_ID[ijet]: continue
+        if c.Jets_bDiscriminatorCSV[ijet]>BTAG_CSV: adjustedBTags+=1
+        for ilep, lep in enumerate(list(c.Electrons)+list(c.Muons)):
+            drjet = min(drjet, lep.DeltaR(jet))
+        if drjet > 0.4: nJets.append(jet)
+    print len(nJets)
+
+    if adjustedBTags > 0 : continue
+    beforejet = beforejet + 1
+    if len(nJets) > 2: continue
+    print len(nJets)
+    afterjet = afterjet + 1 
+
+    basicTracks = []
+    disappearingTracks = []       
+    for itrack, track in enumerate(c.tracks):
+       if verbose: print "enter the track loop"
+       if not track.Pt() > 20 : continue
+       if not abs(track.Eta()) < 2.4: continue
+       if not (abs(track.Eta()) > 1.566 or abs(track.Eta()) < 1.4442): continue
+       if not isBaselineTrack(track, itrack, c, hMask): continue
+       if not track.Pt() < 9999: continue
+       basicTracks.append([track,c.tracks_charge[itrack], itrack])
+       if not track.Pt() > Pt_threshold : continue
+       if not track.Pt()<9999: continue
+       if not isDisappearingTrack_(track, itrack, c): continue
+       calovseta.Fill(track.Eta(),c.tracks_matchedCaloEnergy[itrack])
+       drlep = 99
+       passeslep = True  # checking lepton overlap
+       for ilep, lep in enumerate(list(c.Electrons)+list(c.Muons)+list(c.TAPPionTracks)): 
+          drlep = min(drlep, lep.DeltaR(track))
+          if drlep<0.01: 
+             passeslep = False
+             break
+       if not passeslep: continue
+       calovseta_paslep.Fill(track.Eta(),c.tracks_matchedCaloEnergy[itrack])
+       deltaPhi = math.acos(math.cos((c.METPhi-track.Phi())))
+       fillth1(hdPhi, deltaPhi, weight)
+       if c.tracks_ptError[itrack]/(track.Pt()*track.Pt()) <= 0.05 :
+           if not deltaPhi < 0.8: continue
+       if c.tracks_ptError[itrack]/(track.Pt()*track.Pt())> 0.05 :
+           if not deltaPhi < 1: continue
+
+       fillth1(hbJets, c.BTags, weight)
+       fillth2(hdPhivsPt, track.Pt(), deltaPhi, weight)
+       disappearingTracks.append([track,c.tracks_charge[itrack]])
+       print len(disappearingTracks), ' disappearing tracks till now'
+    
+    SmearedElectrons = []
+    TightElectrons = []       
+    for ilep, lep in enumerate(c.Electrons):
+       if verbose: print ientry, ilep,'ele with Pt' , lep.Pt()
+       if not lep.Pt()>5: continue               
+       if (abs(lep.Eta()) < 1.566 and abs(lep.Eta()) > 1.4442): continue
+       if not abs(lep.Eta())<2.4: continue
+       if verbose: print 'passed eta and Pt'
+       if not c.Electrons_passIso[ilep]: continue          
+       if (lep.Pt() > 30 and c.Electrons_passIso[ilep] and bool(c.Electrons_mediumID[ilep])):
+          TightElectrons.append([lep,c.Electrons_charge[ilep]])
+       if verbose: print 'passed iso '
+       if not c.Electrons_mediumID[ilep]: continue
+#       if verbose: print 'medium ID '
+       matchedTrack = TLorentzVector()           
+       drmin = 9999
+       for trk in basicTracks:
+             if not c.tracks_nMissingOuterHits[trk[2]]==0: continue
+             drTrk = trk[0].DeltaR(lep)
+             if drTrk<drmin:
+                drmin = drTrk    
+                matchedTrack = trk[0]    
+                if drTrk<0.01: break
+       if not drmin<0.01: continue
+       if verbose: print 'found matched track'
+       smear = getSmearFactor(abs(matchedTrack.Eta()), min(matchedTrack.Pt(),299.999), dResponseHist_el)
+       smearedEl = TLorentzVector()          
+       smearedEl.SetPtEtaPhiE(smear*matchedTrack.Pt(),matchedTrack.Eta(),matchedTrack.Phi(),smear*matchedTrack.E())  # using matched track vector instead of reco lepton vector
+       if SmearLeps:
+           if not (smearedEl.Pt()> Pt_threshold and smearedEl.Pt()<9999): continue
+       else:
+           if not (matchedTrack.Pt()> Pt_threshold and matchedTrack.Pt()<9999): continue
+       SmearedElectrons.append([smearedEl, c.Electrons_charge[ilep], matchedTrack])  # matched track is reco electron track (non smeared) here 
+       if verbose: print 'Pt of matched track =', matchedTrack.Pt()
+
+    RecoMuons = []       
+    SmearedMuons = []
+    TightMuons = []       
+    for ilep, lep in enumerate(c.Muons):
+       if not lep.Pt()>5: continue               
+       if (abs(lep.Eta()) < 1.566 and abs(lep.Eta()) > 1.4442): continue
+       if not abs(lep.Eta())<2.4: continue     
+       if not c.Muons_passIso[ilep]: continue       
+      # if not c.Muons_mediumID[ilep]: continue
+       if (lep.Pt() > 30 and c.Muons_passIso[ilep]):
+          TightMuons.append([lep,c.Muons_charge[ilep]])
+       matchedTrack = TLorentzVector()           
+       drmin = 9999
+       for trk in basicTracks:
+             if not c.tracks_nMissingOuterHits[trk[2]]==0: continue
+             drTrk = trk[0].DeltaR(lep)
+             if drTrk<drmin:
+                drmin = drTrk
+                matchedTrack = trk[0]
+                if drTrk<0.005: break
+       if not drmin<0.01: continue
+       RecoMuons.append([lep,ilep])
+#       smear = getSmearFactor(abs(matchedTrack.Eta()), min(matchedTrack.Pt(),299.999), dResponseHist_mu)
+       smear = 1
+       smearedMu = TLorentzVector()          
+       smearedMu.SetPtEtaPhiE(smear*matchedTrack.Pt(),matchedTrack.Eta(),matchedTrack.Phi(),smear*matchedTrack.E())
+       if SmearLeps:
+           if not (smearedMu.Pt()> Pt_threshold and smearedMu.Pt()<9999): continue
+       else:
+           if not (matchedTrack.Pt()> Pt_threshold and matchedTrack.Pt()<9999): continue
+
+       SmearedMuons.append([smearedMu, c.Muons_charge[ilep], matchedTrack])
+                    
+    adjustedHt = 0
+    adjustedMht = TLorentzVector()
+    adjustedMht.SetPxPyPzE(0,0,0,0)
+    for jet in c.Jets:
+       if not jet.Pt()>30: continue
+       if not abs(jet.Eta())<5: continue
+       if len(SmearedElectrons)>0:
+          if not jet.DeltaR(SmearedElectrons[0][0])>0.5: continue####update 
+       if len(SmearedMuons)>0:
+          if not jet.DeltaR(SmearedMuons[0][0])>0.5: continue####update           
+       if len(disappearingTracks)>0:
+          if not jet.DeltaR(disappearingTracks[0][0])>0.5: continue####update           
+       adjustedMht-=jet
+       if not abs(jet.Eta())<2.4: continue####update to 2.4       
+       adjustedHt+=jet.Pt()
+          
+    for igen, genlep in enumerate(genels):
+        for idistrk, distrk in enumerate(disappearingTracks):
+            dr = genlep[0].DeltaR(distrk[0])
+            if not dr < 0.02: continue
+            if RelaxGenKin: pt, eta = distrk[0].Pt(),abs(distrk[0].Eta())
+            else: pt, eta = genlep[0].Pt(), abs(genlep[0].Eta())
+            energyvar = pt
+            fillth2(hGenPtvsEta_DTnum, pt, eta, weight)
+            fillth2(hGenPtvsResp, TMath.Log10(distrk[0].Pt()/genlep[0].Pt()),genlep[0].Pt(),weight)             
+            for histkey in  hGenElProbePt_DTnums:
+                if abs(eta) > histkey[0] and abs(eta) < histkey[1]:
+                    fillth1(hGenElProbePt_DTnums[histkey], energyvar, weight)
+            #print ientry, 'found a nice dt', distrk[0].Pt()
+            break       
+            
+        idlep   = -1
+        drminSmearedlepGenlep = 9999
+        gotthematch = False      
+        for ie, lep in enumerate(SmearedElectrons):
+            dr = genlep[0].DeltaR(lep[0])  # dr matching can be done with smeared electron or matched track
+            if not dr < 0.02: continue #here we have a probe dt
+            if SmearLeps: pt = lep[0].Pt()
+            else: pt = lep[2].Pt() 
+#            print ientry, 'found electron with pt =', pt
+            check = check + 1
+#            print check , ' are the number of electron' 
+            energyvar = pt
+            fillth2(hGenPtvsEta_RECOden, energyvar, abs(lep[0].Eta()), weight )#This seemed to be calling the last iterated lepctron
+            for histkey in  hGenElProbePt_RECOdens:
+                if abs(lep[0].Eta()) > histkey[0] and abs(lep[0].Eta()) < histkey[1]:
+                    #fillth1(hGenElProbePt_RECOdens[histkey], lep[0].Pt(), weight)
+                    fillth1(hGenElProbePt_RECOdens[histkey], energyvar, weight)
+                    gotthematch = True
+                    break
+            if gotthematch: break
+             
+    for igen, genlep in enumerate(genmus):
+        for idistrk, distrk in enumerate(disappearingTracks):
+            dr = genlep[0].DeltaR(distrk[0])
+            if not dr < 0.02: continue
+            if RelaxGenKin: pt, eta = distrk[0].Pt(),abs(distrk[0].Eta())
+            else: pt, eta = genlep[0].Pt(), abs(genlep[0].Eta())
+            energyvar = pt
+            fillth2(hGenPtvsEta_DTnum, pt, eta, weight)
+            fillth2(hGenPtvsResp, TMath.Log10(distrk[0].Pt()/genlep[0].Pt()),genlep[0].Pt(),weight)             
+            for histkey in  hGenMuProbePt_DTnums:
+                if abs(eta) > histkey[0] and abs(eta) < histkey[1]:
+                    fillth1(hGenMuProbePt_DTnums[histkey], energyvar, weight)
+            #print ientry, 'found a nice dt', distrk[0].Pt()
+            break       
+        idlep   = -1
+        drminSmearedlepGenlep = 9999
+        gotthematch = False      
+        for ie, lep in enumerate(SmearedMuons):
+            dr = genlep[0].DeltaR(lep[0])
+            if not dr < 0.02: continue #here we have a probe dt
+            if SmearLeps: pt = lep[0].Pt()
+            else: pt = lep[2].Pt() 
+            energyvar = pt
+            fillth2(hGenPtvsEta_RECOden, energyvar, abs(lep[0].Eta()), weight )#This seemed to be calling the last iterated lepctron
+            for histkey in  hGenMuProbePt_RECOdens:
+                if abs(lep[0].Eta()) > histkey[0] and abs(lep[0].Eta()) < histkey[1]:
+                    #fillth1(hGenMuProbePt_RECOdens[histkey], lep[0].Pt(), weight)
+                    fillth1(hGenMuProbePt_RECOdens[histkey], energyvar, weight)
+                    gotthematch = True
+                    break
+            if gotthematch: break            
+  
+	if GenOnly: continue
+	tagTlv = TLorentzVector()
+	tagTlv.SetPxPyPzE(0,0,0,0)
+       
+    #electrons
+    for charge in range(-1,2,2):
+        for itag, tag in enumerate(SmearedElectrons):#TightElectrons):      #checking with using recoleps instead of tight leps
+            if not tag[1]==charge: continue
+            IM  =  0 
+            TagPt, TagEta = tag[2].Pt(), tag[2].Eta()  #  tag[0].Pt(), tag[0].Eta()
+            probeIsReco, probeIsDt = False, False
+            dmMin = 999
+            for idt, dt in enumerate(disappearingTracks):
+                if not (tag[1] + dt[1] == 0): continue  
+                if dt[0].DeltaR(tag[2])<0.01: continue       
+                IMleplep = (tag[2] + dt[0]).M()   # (tag[0] + dt[0]).M()
+                if (IMleplep < 0): 
+                    print 'something wrong, space-like event'
+                    continue
+                dIM = abs(IMleplep - 91)
+                if(dIM < dmMin):
+                    dmMin = dIM
+                    IM = IMleplep
+                    probeTlv =  dt[0]
+                    probeIsDt = True
+                    probeIsReco = False          
+            for iSmearedEl, smearedEl in enumerate(SmearedElectrons):
+                if not (tag[1] + smearedEl[1] == 0): continue
+                if smearedEl[0].DeltaR(tag[2])<0.01: continue                
+                IMleplep = (tag[2] + smearedEl[0]).M()     # use smeared lepton always (independent of option: SmearLeps) to reconstruct invariant mass 
+                if (IMleplep < 0):   ## added after 4 dec
+                    print 'something  wrong, space-like event'
+                    continue
+                dIM = abs(IMleplep - 91)
+                if(dIM < dmMin):
+                    dmMin = dIM
+                    IM    = IMleplep
+                    if SmearLeps: probeTlv  = smearedEl[0]
+                    else: probeTlv = smearedEl[2]
+                    probeIsReco = True
+                    probeIsDt = False                    
+#            if not (IM > 60 and IM < 120): continue 
+            if probeTlv.Pt() < 120: 
+                if not (IM > 76 and IM < 106): continue
+            if probeTlv.Pt() >= 120:
+                if not (IM > 76 and IM < 106): continue
+            fillth1(hElTagPt, TagPt, weight)
+            fillth1(hElTagEta, TagEta, weight)
+            if probeIsDt:
+                ProbePt = probeTlv.Pt()
+                ProbeEta = abs(probeTlv.Eta())
+                if not isdata: isgenmatched  = isGenMatched(probeTlv, 11)
+                else: isgenmatched = 1
+                if isgenmatched == 0: continue #uncomment to skip isGenMatcheding of Probes
+                fillth2(hPtvsEta_DTnum, ProbePt, ProbeEta, weight)
+
+                for histkey in  dInvMassElDTHist:
+                    if abs(ProbeEta) > histkey[0][0] and abs(ProbeEta) < histkey[0][1] and ProbePt > histkey[1][0] and ProbePt < histkey[1][1]:
+                        fillth1(dInvMassElDTHist[histkey],IM,weight)                    
+                for histkey in  hElProbePt_DTnums:
+                    if abs(ProbeEta) > histkey[0] and abs(ProbeEta) < histkey[1]:
+                        fillth1(hElProbePt_DTnums[histkey], ProbePt, weight)                    
+                for histkey in  dProbeElTrkResponseDT_:
+                    if abs(ProbeEta) > histkey[0][0] and abs(ProbeEta) < histkey[0][1] and isgenmatched > histkey[1][0] and isgenmatched < histkey[1][1]:
+                        fillth1(dProbeElTrkResponseDT_[histkey],TMath.Log10(ProbePt/isgenmatched),weight)
+
+            if probeIsReco:
+                if not isdata: isgenmatched  = isGenMatched(probeTlv, 11)
+                else: isgenmatched = 1                    
+                if isgenmatched == 0: continue #uncomment to skip isGenMatcheding of Probes
+                ProbePt   = probeTlv.Pt()
+                ProbeEta = abs(probeTlv.Eta())
+                fillth2(hPtvsEta_RECOden, ProbePt, ProbeEta, weight)     
+                for histkey in  dInvMassElRECOHist:
+                    if abs(ProbeEta) > histkey[0][0] and abs(ProbeEta) < histkey[0][1] and ProbePt > histkey[1][0] and ProbePt < histkey[1][1]:
+                        fillth1(dInvMassElRECOHist[histkey],IM, weight)       
+                for histkey in  hElProbePt_RECOdens:
+                    if abs(ProbeEta) > histkey[0] and abs(ProbeEta) < histkey[1]:
+                        fillth1(hElProbePt_RECOdens[histkey], ProbePt, weight)   
+                for histkey in  dProbeElTrkResponseRECO_:
+                    if abs(ProbeEta) > histkey[0][0] and abs(ProbeEta) < histkey[0][1] and isgenmatched > histkey[1][0] and isgenmatched < histkey[1][1]:
+                        fillth1(dProbeElTrkResponseRECO_[histkey],TMath.Log10(ProbePt/isgenmatched),weight) 
+
+    #muons
+    for charge in range(-1,2,2):
+        for itag, tag in enumerate(SmearedMuons):#TightMuons):    
+            if not tag[1]==charge: continue
+            IM  =  0 
+            TagPt, TagEta = tag[2].Pt(), tag[2].Eta()
+            probeIsReco, probeIsDt = False, False
+            dmMin = 999
+            for idt, dt in enumerate(disappearingTracks):
+                if not (tag[1] + dt[1] == 0): continue
+                if dt[0].DeltaR(tag[2])<0.01: continue       
+                IMleplep = (tag[2] + dt[0]).M()
+                if (IMleplep < 0): 
+                    print 'something horribly wrong, space-like event'
+                    continue
+                dIM = abs(IMleplep - 91)
+                if(dIM < dmMin):
+                    dmMin = dIM
+                    IM = IMleplep
+                    probeTlv =  dt[0]
+                    probeIsDt = True
+                    probeIsReco = False          
+            for iSmearedMu, smearedMu in enumerate(SmearedMuons):
+                if not (tag[1] + smearedMu[1] == 0): continue
+                if smearedMu[0].DeltaR(tag[2])<0.01: continue                
+                IMleplep = (tag[2] + smearedMu[0]).M()         # always reconstruct invariant mass with smeared leptons independent of smearLeps flag
+                if (IMleplep < 0):
+                    print 'something horribly wrong, space-like event'
+                    continue
+                dIM = abs(IMleplep - 91)
+                if(dIM < dmMin):
+                    dmMin = dIM
+                    IM    = IMleplep
+                    if SmearLeps: probeTlv = smearedMu[0]            # smear lep flag is used to define kappa as a function of smear lep pt or reco pt
+                    else: probeTlv = smearedMu[2]
+                    probeIsReco = True
+                    probeIsDt = False                    
+
+#            if not (IM > 60 and IM < 120): continue
+            if probeTlv.Pt() < 120:
+                if not (IM > 86 and IM < 96): continue
+            if probeTlv.Pt() >= 120:
+                if not (IM > 86 and IM < 96): continue
+
+            fillth1(hMuTagPt, TagPt, weight)
+            fillth1(hMuTagEta, TagEta, weight)
+            if probeIsDt:
+                ProbePt = probeTlv.Pt()
+                ProbeEta = abs(probeTlv.Eta())
+                if not isdata: isgenmatched  = isGenMatched(probeTlv, 13)
+                else: isgenmatched = 1
+                if isgenmatched == 0: continue #uncomment to skip isGenMatcheding of Probes
+                fillth2(hPtvsEta_DTnum, ProbePt, ProbeEta, weight)
+                print 'here at the muon threshold', ProbePt, ProbeEta
+                for histkey in  dInvMassMuDTHist:
+                    if abs(ProbeEta) > histkey[0][0] and abs(ProbeEta) < histkey[0][1] and ProbePt > histkey[1][0] and ProbePt < histkey[1][1]:
+                        fillth1(dInvMassMuDTHist[histkey],IM,weight)                    
+                for histkey in  hMuProbePt_DTnums:
+                    if abs(ProbeEta) > histkey[0] and abs(ProbeEta) < histkey[1]: 
+                        fillth1(hMuProbePt_DTnums[histkey], ProbePt, weight)                    
+                for histkey in  dProbeMuTrkResponseDT_:
+                    if abs(ProbeEta) > histkey[0][0] and abs(ProbeEta) < histkey[0][1] and isgenmatched > histkey[1][0] and isgenmatched < histkey[1][1]:
+                        fillth1(dProbeMuTrkResponseDT_[histkey],TMath.Log10(ProbePt/isgenmatched),weight)
+
+            if probeIsReco:
+                if not isdata: isgenmatched  = isGenMatched(probeTlv, 13)
+                else: isgenmatched = 1                
+                if isgenmatched == 0: continue #uncomment to skip isGenMatcheding of Probes
+                ProbePt   = probeTlv.Pt()
+                ProbeEta = abs(probeTlv.Eta())
+                fillth2(hPtvsEta_RECOden, ProbePt, ProbeEta, weight)     
+                for histkey in  dInvMassMuRECOHist:
+                    if abs(ProbeEta) > histkey[0][0] and abs(ProbeEta) < histkey[0][1] and ProbePt > histkey[1][0] and ProbePt < histkey[1][1]:
+                        fillth1(dInvMassMuRECOHist[histkey],IM, weight)       
+                for histkey in  hMuProbePt_RECOdens:
+                    if abs(ProbeEta) > histkey[0] and abs(ProbeEta) < histkey[1]:
+                        fillth1(hMuProbePt_RECOdens[histkey], ProbePt, weight)   
+                for histkey in  dProbeMuTrkResponseRECO_:
+                    if abs(ProbeEta) > histkey[0][0] and abs(ProbeEta) < histkey[0][1] and isgenmatched > histkey[1][0] and isgenmatched < histkey[1][1]:
+                        fillth1(dProbeMuTrkResponseRECO_[histkey],TMath.Log10(ProbePt/isgenmatched),weight) 
+                                                    
+
+print 'total events', beforejet
+print 'events with no jets', afterjet
+fnew = TFile('CB_TagnProbeHists_'+identifier+'.root','recreate')
+print 'making', fnew.GetName()
+fnew.cd()
+hHt.Write()
+hHtWeighted.Write()
+hGenPtvsEta_DTnum.Write()
+hGenPtvsEta_RECOden.Write()
+hPtvsEta_DTnum.Write()    
+hPtvsEta_RECOden.Write()
+calovseta.Write()
+calovseta_paslep.Write()
+hElTagPt.Write()
+hElTagEta.Write()
+hMuTagPt.Write()
+hMuTagEta.Write()
+hdPhi.Write()
+hbJets.Write()
+hdPhivsPt.Write()
+#Dictionaries:
+for histkey in hElProbePt_DTnums: 
+    hElProbePt_DTnums[histkey].Write()    
+    hElProbePt_RECOdens[histkey].Write()
+    hGenElProbePt_DTnums[histkey].Write()    
+    hGenElProbePt_RECOdens[histkey].Write() 
+    
+    hMuProbePt_DTnums[histkey].Write()    
+    hMuProbePt_RECOdens[histkey].Write()
+    hGenMuProbePt_DTnums[histkey].Write()    
+    hGenMuProbePt_RECOdens[histkey].Write()       
+for histkey in  dProbeElTrkResponseDT_: 
+    dProbeElTrkResponseDT_[histkey].Write()
+    dProbeElTrkResponseRECO_[histkey].Write()
+    dProbeMuTrkResponseDT_[histkey].Write()
+    dProbeMuTrkResponseRECO_[histkey].Write()    
+for histkey in  dInvMassElRECOHist:
+    dInvMassElRECOHist[histkey].Write()
+    dInvMassElDTHist[histkey].Write()
+    dInvMassMuRECOHist[histkey].Write()
+    dInvMassMuDTHist[histkey].Write()    
+print 'number of electrons = ', check
+hGenPtvsResp.Write()
+
+print "just created file:", fnew.GetName()
+fnew.Close()
+

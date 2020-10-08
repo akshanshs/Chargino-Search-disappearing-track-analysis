@@ -1,0 +1,329 @@
+from ROOT import *
+import sys
+import numpy as np
+from DataFormats.FWLite import Events, Handle
+import scipy.constants as scc
+import math
+from glob import glob
+from FWCore.ParameterSet.VarParsing import VarParsing
+
+gROOT.SetBatch()
+gROOT.SetStyle('Plain')
+
+
+#Histograms
+m = [15, 80, 140, 230, 400, 600]
+hMuGenPt             = TH1D("hMuGenPt", ";m [GeV] ;pt of the gen Mu;;", len(m)-1,np.asarray(m, 'd'))
+hMuGenPtRECOeff      = TH1D("hMuGenPtRECOeff", ";m [GeV] ;pt of the RECO Mu;;", len(m)-1,np.asarray(m, 'd'))
+hMuGenPtDTeff        = TH1D("hMuGenPtDTeff", "pt of the DT Mu", len(m)-1,np.asarray(m, 'd'))
+
+hMuGenEta            = TH1D("hMuGenEta", "Eta of the gen Mu", 6, 0, 2.5)
+hMuGenEtaRECOeff     = TH1D("hMuGenEtaRECOeff", "Eta of the gen Mu", 6, 0, 2.5)
+hMuGenEtaDTeff       = TH1D("hMuGenEtaDTeff", "Eta of the reco Mu", 6, 0, 2.5)
+
+hMuProbePt           = TH1D("hMuProbePt", "pt of the MuProbes", len(m)-1,np.asarray(m, 'd'))
+hMuProbePtDTeff      = TH1D("hMuProbePtDTeff", "pt of the MuProbes", len(m)-1,np.asarray(m, 'd'))
+hMuProbePtRECOeff    = TH1D("hMuProbePtRECOeff", "pt of the MuProbes", len(m)-1,np.asarray(m, 'd'))
+
+hMuProbeEta          = TH1D("hMuProbeEta", "Eta of the MuProbes", 6, 0, 2.5)
+hMuProbeEtaDTeff     = TH1D("hMuProbeEtaDTeff", "Eta of the MuProbes", 6, 0, 2.5)
+hMuProbeEtaRECOeff   = TH1D("hMuProbeEtaRECOeff", "Eta of the MuProbes", 6, 0, 2.5)
+
+hMuTagPt             = TH1D("hMuTagPt"  , "pt of the MuTags", len(m)-1,np.asarray(m, 'd'))
+hMuTagEta            = TH1D("hMuTagEta"  , "Eta of the MuTags", 6, 0, 2.5)
+
+hprobe                = TH1D("hprobe"  , "probe status", 2, 0, 2)
+hIMZ                  = TH1D("hIMZ"  , "IM z ", 4, 60, 120)
+hIMZRECOeff           = TH1D("hIMZDTeff"  , "IM tag + DTing probe ", 4, 60, 120)
+hIMZDTeff             = TH1D("hIMZRECOeff"  , "IM tag + RECOing probe ", 4, 60, 120)
+
+hHTnum                = TH1D("hHTnum","HT for number of events", 150,40,2500)
+
+#####         
+options = VarParsing ('python')
+options.parseArguments()
+
+#Input File 
+inputFiles = options.inputFiles
+if inputFiles ==  []:
+        print 'running on small default DYtoLL sample'
+        inputFiles = ["/pnfs/desy.de/cms/tier2/store/user/sbein/NtupleHub/Production2016v1/Summer16.DYJetsToLL_M-50_HT-100to200_TuneCUETP8M1_13TeV-madgraphMLM-pythia8_10_RA2AnalysisTree.root"]
+c=TChain("TreeMaker2/PreSelection")
+c.Add(inputFiles[0])
+
+nentries = c.GetEntries()
+print "will process", nentries, "events"
+
+identifier = inputFiles[0][inputFiles[0].rfind('/')+1:].replace('.root','').replace('Summer16.','').replace('RA2AnalysisTree','')
+identifier+='nFiles'+str(len(inputFiles))
+
+def main():
+    t           = TTree('TagProbe','TagProbe')          #tree for tracks level optimization  
+    XsecLumi      = np.zeros(1, dtype = float)
+    b_XsecLumi    = t.Branch('XsecLumi', XsecLumi, 'XsecLumi/D')
+    tagPt       = np.zeros(1, dtype = float)
+    b_tagPt     = t.Branch('tagPt', tagPt, 'tagPt/D')
+    probePt     = np.zeros(1, dtype = float)
+    b_probePt   = t.Branch('probePt', probePt, 'probePt/D')
+    probePtRECO     = np.zeros(1, dtype = float)
+    b_probePtRECO   = t.Branch('probePtRECO', probePtRECO, 'probePtRECO/D')
+    probePtDT     = np.zeros(1, dtype = float)
+    b_probePtDT   = t.Branch('probePtDT', probePtDT, 'probePtDT/D')
+    tagEta      = np.zeros(1, dtype = float)
+    b_tagEta    = t.Branch('tagEta', tagEta, 'tagEta/D')
+    probeEta    = np.zeros(1, dtype = float)
+    b_probeEta  = t.Branch('probeEta', probeEta, 'probeEta/D')
+    probeEtaRECO    = np.zeros(1, dtype = float)
+    b_probeEtaRECO  = t.Branch('probeEtaRECO', probeEtaRECO, 'probeEtaRECO/D')
+    probeEtaDT    = np.zeros(1, dtype = float)
+    b_probeEtaDT  = t.Branch('probeEtaDT', probeEtaDT, 'probeEtaDT/D')
+    IMzDT         = np.zeros(1, dtype = float)
+    b_IMzDT       = t.Branch('IMzDT', IMzDT, 'IMzDT/D')
+    IMzRECO         = np.zeros(1, dtype = float)
+    b_IMzRECO       = t.Branch('IMzRECO', IMzRECO, 'IMzRECO/D')
+    IMz         = np.zeros(1, dtype = float)
+    b_IMz       = t.Branch('IMz', IMz, 'IMz/D')
+    
+    DTprobe     = np.zeros(1, dtype = bool)
+    b_DTprobe   = t.Branch('DTprobe', DTprobe, 'DTprobe/O')
+    jentry=0
+    n = 0
+    f = 0
+
+    for ientry in range(nentries):
+        c.GetEntry(ientry)
+        hHTnum.Fill(c.madHT)
+	flag_probe = -1
+	recof = 0
+	nmu = -1
+	P1  =  0
+        Eta1  =  0
+	Phi1 = 0
+	C1 = 0
+	P2  =  0
+	Eta2 = 0
+	C2 = 0
+	IM  =  0 
+	dIM =  0
+	dIMmax = 999
+	track_id = -1
+	muTlvsum = TLorentzVector()
+	muTlvsum.SetPxPyPzE(0, 0, 0, 0)
+        trkTlvsum = TLorentzVector()
+        trkTlvsum.SetPxPyPzE(0, 0, 0, 0)
+
+        chiTlvsum = TLorentzVector()
+        chiTlvsum.SetPxPyPzE(0, 0, 0, 0)
+	dtTlvsum = TLorentzVector()
+        dtTlvsum.SetPxPyPzE(0, 0, 0, 0)
+
+        for igen, gen in enumerate(c.GenParticles):
+                drsmall = .2
+		drsmal  = .2
+		idtrk   = -1
+		idlep   = -1
+                if not (gen.Pt() > 10 and gen.Eta() < 2.4): continue
+                if not (abs(c.GenParticles_PdgId[igen]) == 13 and c.GenParticles_Status[igen] == 1):continue
+                hMuGenPt.Fill(gen.Pt(), (c.CrossSection*35.9)/(1*.001))
+                hMuGenEta.Fill(gen.Eta(), (c.CrossSection*35.9)/(1*.001))
+                for im, m in enumerate(c.Muons):
+                        if m.Pt() < 10: continue
+                        dr = gen.DeltaR(m)
+                        if dr < drsmall:
+                                drsmall = dr
+				idlep   = im
+                if drsmall < .01:
+                        hMuGenPtRECOeff.Fill(c.Muons[idlep].Pt(), (c.CrossSection*35.9)/(1*.001))
+                        hMuGenEtaRECOeff.Fill(c.Muons[idlep].Eta(), (c.CrossSection*35.9)/(1*.001))
+			continue
+		for itrk, trk in enumerate(c.tracks):
+
+			if trk.Pt() < 10: continue
+			dr = gen.DeltaR(trk)
+			if dr < drsmal:
+				drsmal = dr
+				idtrk  = itrk
+				dtTlvsum = trk
+		if drsmal < .01:
+			flag_probe = probe(dtTlvsum, idtrk)
+			if (flag_probe == 1):
+				hMuGenPtDTeff.Fill(c.tracks[idtrk].Pt(), (c.CrossSection*35.9)/(1*.001))
+				hMuGenEtaDTeff.Fill(c.tracks[idtrk].Eta(), (c.CrossSection*35.9)/(1*.001))
+        for imu, mu in enumerate(c.Muons):
+
+		if (imu == 0):
+			C1 = c.Muons_charge[imu]
+			P1 = mu.Pt()
+			Eta1 = abs(mu.Eta())
+			Phi1 = mu.Phi()
+			nmu = imu
+			muTlvsum = muTlvsum + mu
+
+
+
+#		print "Event number :", ientry,":", muTlvsum.M()
+	if (nmu ==0):
+		nJet = nJets_adj(muTlvsum)
+		pfMET = math.sqrt(c.MET*c.MET + P1*P1 + c.MET*P2*math.cos(c.METPhi-Phi1))
+
+		for ireco, reco in enumerate(c.Muons):
+			print 'charge:', c.Muons_charge[ireco]
+			trkTlvsum = muTlvsum + reco
+			IMmumu = trkTlvsum.M()
+			if (IMmumu < 0): continue
+			dIM = abs(IMmumu - 91)
+			if(dIM < dIMmax):
+				dIMmax = dIM
+				IM     = IMmumu
+				track_id  = ireco
+				chiTlvsum =  reco
+				C2 = c.Muons_charge[ireco]
+		if (IM > 80 and IM < 100 and (C1+C2 )==0):
+			hIMZ.Fill(IM, (c.CrossSection*35.9)/(1*.001))
+			P2 = chiTlvsum.Pt()
+			Eta2 = abs(chiTlvsum.Eta())
+
+			
+			hMuTagPt.Fill(P1, (c.CrossSection*35.9)/(1*.001))
+			hMuProbePt.Fill(P2, (c.CrossSection*35.9)/(1*.001))
+			hMuTagEta.Fill(Eta1, (c.CrossSection*35.9)/(1*.001))
+			hMuProbeEta.Fill(Eta2, (c.CrossSection*35.9)/(1*.001))
+			hIMZRECOeff.Fill(IM, (c.CrossSection*35.9)/(1*.001))
+			hMuProbePtRECOeff.Fill(P2, (c.CrossSection*35.9)/(1*.001))
+			hMuProbeEtaRECOeff.Fill(Eta2, (c.CrossSection*35.9)/(1*.001))
+			recof = 1
+			continue
+
+		for ichi, chi in enumerate(c.tracks):
+			print 'trk charge:', c.tracks_charge[ichi]
+			trkTlvsum = muTlvsum + chi
+			IMmumu = trkTlvsum.M()
+			if (IMmumu < 0): continue
+			dIM = abs(IMmumu - 91)
+			if(dIM < dIMmax):
+				dIMmax = dIM
+				IM     = IMmumu
+				track_id  = ichi
+				chiTlvsum =  chi
+				C2 = c.tracks_charge[ichi]
+#		print "Chi candidate number", ichi , "in event", ientry , "mu mu invariant mass =", IM
+
+		if (IM > 80 and IM < 100 and (C1+C2 )==0):
+
+			hIMZ.Fill(IM, (c.CrossSection*35.9)/(1*.001))
+			P2 = chiTlvsum.Pt()
+			Eta2 = abs(chiTlvsum.Eta())
+			hMuTagPt.Fill(P1, (c.CrossSection*35.9)/(1*.001))
+			hMuProbePt.Fill(P2, (c.CrossSection*35.9)/(1*.001))
+                        hMuTagEta.Fill(Eta1, (c.CrossSection*35.9)/(1*.001))
+                        hMuProbeEta.Fill(Eta2, (c.CrossSection*35.9)/(1*.001))
+			flag_probe = probe(chiTlvsum, track_id)
+			if (flag_probe == 1):
+				hIMZDTeff.Fill(IM, (c.CrossSection*35.9)/(1*.001))
+				hMuProbePtDTeff.Fill(P2, (c.CrossSection*35.9)/(1*.001))
+				hMuProbeEtaDTeff.Fill(Eta2, (c.CrossSection*35.9)/(1*.001))
+			t.GetEntry(jentry)
+			XsecLumi[0]       = (c.CrossSection)/(1*0.001)
+			tagPt[0]          = P1
+			probePt[0]        = P2
+			tagEta[0]         = Eta1
+			probeEta[0]       = Eta2
+			IMz[0]            = IM
+			if (flag_probe == 0):
+				IMzDT[0]            = IM
+				probePtDT[0]        = P2
+				probeEtaDT[0]       = Eta2
+				probePtRECO[0]        = -1
+				probeEtaRECO[0]       = -1
+				IMzRECO[0]            = -1
+			if (flag_probe == 1):
+				IMzRECO[0]            = IM
+				probePtRECO[0]        = P2
+				probeEtaRECO[0]       = Eta2
+				probePtDT[0]        = -1
+                                probeEtaDT[0]       = -1
+				IMzDT[0]            = -1
+			DTprobe[0]        = flag_probe
+			jentry += 1
+			t.Fill()
+
+    ftp  = TFile('TagnProbeMuTree_'+identifier+'.root','recreate')
+    t.Write()
+    ftp.Close()
+    print "file:", ftp , "created."
+    print "RECOing probe", f , "DTing probes", n
+    fnew = TFile('TagnProbeMuHists_'+identifier+'.root','recreate')
+    fnew.cd()
+
+    hHTnum.Write()
+
+    hMuGenPt.Write()
+    hMuGenEta.Write()
+
+    hMuGenPtRECOeff.Write()
+    hMuGenEtaRECOeff.Write()
+
+    hMuGenPtDTeff.Write()
+    hMuGenEtaDTeff.Write()
+
+    hMuTagPt.Write()
+    hMuTagEta.Write()
+
+    hMuProbePt.Write()
+    hMuProbeEta.Write()
+    hIMZ.Write()
+
+    hprobe.Write()
+
+    hIMZRECOeff.Write()
+    hMuProbePtRECOeff.Write()
+    hMuProbeEtaRECOeff.Write()
+    hIMZDTeff.Write()
+    hMuProbePtDTeff.Write()
+    hMuProbeEtaDTeff.Write()
+    
+    fnew.Close()
+    print "file:", fnew, "created."
+
+def probe(chi, chi_id):
+	S = 0
+	M = 0
+	L = 0
+	flag = 1
+	if not (chi.Pt() > 10): flag = 0
+	if c.tracks_pixelLayersWithMeasurement[chi_id] == c.tracks_trackerLayersWithMeasurement[chi_id]: S = 1
+	if c.tracks_trackerLayersWithMeasurement[chi_id] < 7 and c.tracks_pixelLayersWithMeasurement[chi_id] < c.tracks_trackerLayersWithMeasurement[chi_id] : M = 1
+	if c.tracks_trackerLayersWithMeasurement[chi_id] > 6 and c.tracks_pixelLayersWithMeasurement[chi_id] < c.tracks_trackerLayersWithMeasurement[chi_id]: L = 1
+	if chi.Pt() < 15 or abs(chi.Eta()) > 2.4 : flag = 0
+	if c.tracks_dxyVtx[chi_id] > 0.02 and S == 1: flag = 0
+	if c.tracks_dxyVtx[chi_id] > 0.01 and S == 0: flag = 0
+	if c.tracks_dzVtx[chi_id]  > 0.05 : flag = 0
+	if c.tracks_neutralPtSum[chi_id] > 10 or ((c.tracks_neutralPtSum[chi_id]/chi.Pt()) > 0.1): flag = 0
+	if c.tracks_chargedPtSum[chi_id] > 10 or ((c.tracks_chargedPtSum[chi_id]/chi.Pt()) > 0.1): flag = 0
+	if not c.tracks_passPFCandVeto[chi_id]:flag = 0
+	if not (c.tracks_trkRelIso[chi_id] < 0.2): flag = 0
+	if not (c.tracks_trkRelIso[chi_id]*chi.Pt() < 10) : flag = 0
+	if c.tracks_trackerLayersWithMeasurement[chi_id] < 2 or c.tracks_nValidTrackerHits[chi_id] < 2 : flag = 0 
+	if c.tracks_nMissingInnerHits[chi_id] > 0: flag = 0
+	if c.tracks_nMissingOuterHits[chi_id] < 2 and S == 0: flag = 0
+	if c.tracks_ptError[chi_id]/(chi.Pt()*chi.Pt()) > 0.2 and S == 1: flag = 0
+	if c.tracks_ptError[chi_id]/(chi.Pt()*chi.Pt()) > 0.05 and M == 1: flag = 0
+	if c.tracks_ptError[chi_id]/(chi.Pt()*chi.Pt()) > 0.005 and L == 1: flag = 0
+	if not c.tracks_trackQualityHighPurity[chi_id] : flag = 0
+	
+	return flag
+
+def nJets_adj(muon):
+	
+	j = c.NJets
+	for ijet, jet in enumerate(c.Jets):
+		if (c.NJets == ijet): break
+		print "Jet number ", ijet+1, " Pt: ", jet.Pt()
+		dr = muon.DeltaR(jet)
+		if (dr < 0.5): j = j-1
+	return j
+		
+main()
+
+    
+

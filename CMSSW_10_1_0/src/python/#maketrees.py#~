@@ -1,0 +1,60 @@
+#! /usr/bin/env python
+
+from ROOT import *
+import sys
+import numpy as np
+from DataFormats.FWLite import Events, Handle
+import scipy.constants as scc
+import math
+from glob import glob
+
+gROOT.SetBatch()
+gROOT.SetStyle('Plain')
+
+# Make VarParsing object
+# https://twiki.cern.ch/twiki/bin/view/CMS/SWGuideAboutPythonConfigFile#VarParsing_Example
+from FWCore.ParameterSet.VarParsing import VarParsing
+options = VarParsing ('python')
+options.parseArguments()
+
+
+def main():
+
+    f_s = TFile('signal.root','recreate')       #file with signal tree
+    f_b = TFile('background.root','recreate')        #file with background tree
+    ts = TTree('Analysis','Analysis')          #tree for optimization variables
+    tb = TTree('Analysis','Analysis')
+
+    inMiss_s = np.zeros(1, dtype = int)
+    b_inMiss = ts.Branch('inMiss', inMiss_s, 'inMiss/I')
+
+    midMiss_s = np.zeros(1, dtype = int)
+    b_midMiss = ts.Branch('midMiss', midMiss_s, 'midMiss/I')
+
+    imputFiles = options.inputFiles
+    if inputFiles == []:
+        print 'running on dfault full sample cTau = 55 cm'
+        inputFiles = ['/nfs/dust/cms/user/singha/MET_scan_8/CMSSW_8_0_20/src/MetScanning/LLPtupleTEST1/AODI/merged/pMSSM12_MCMC1_10_374794_step2_AODSIM.root']
+    events = Events(inputFiles)
+    
+
+    handle_muons       = Handle ("std::vector<reco::Muon>")
+    label_muons        = ('muons') 
+
+    handle_tracks      = Handle ("vector<reco::Track>")
+    label_tracks       = ('generalTracks')
+
+    handle_pfcands     = Handle ("std::vector<reco::PFCandidate>")
+    label_pfcands      = ('particleFlow')
+
+    handle_genparticles= Handle ("vector<reco::GenParticle>")
+    label_genparticles = ('genParticlePlusGeant')
+    
+    handle_jets        = Handle ("vector<reco::PFJet>")
+    label_jets         = ('ak4PFJetsCHS')
+
+    handle_MET         = Handle ("vector<reco::PFMET>")
+    label_MET          = ('pfMet')
+
+    
+

@@ -1,0 +1,38 @@
+import os , sys
+from ROOT import *
+from glob import glob
+import scipy.constants as scc
+from utilitiesII import *
+import fileinput
+import datetime
+
+
+lumi = 35.9
+
+try: File = sys.argv[1]
+except: File = 'Limit_BinNumberAllBkg_Signal100.root'
+
+today = datetime.date.today()
+
+print 'plank', scc.physical_constants["Planck constant over 2 pi in eV s"][0]
+print scc.c
+
+
+
+
+def main( mass = 'g2400_chi1300', lifetime = '50'):
+
+  with open(File,'r') as f:
+    lines = f.readlines()
+    print lines
+
+  newfile = File
+
+  with open(newfile,'w') as fw:
+    for iline,line in enumerate(lines):
+      print line
+      if '3.9452687472799997e-16'  in line: line = line.replace('OOO',str(1.97326691904E-15))
+      fw.write(line)
+      print line
+      pause()
+main()
