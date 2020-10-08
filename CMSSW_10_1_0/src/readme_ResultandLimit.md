@@ -1,0 +1,52 @@
+We have Hists for
+
+Lep BKG : Prediction with systematics
+    	:Make El and Mu Histogram seperately
+
+fake BKG: Prediction with systematics
+Tau BKG:  Prediction with systematics
+
+Signal:   Prediction with syatematics
+
+Data:     Observation
+
+Combine all tfour Bkg stacked with error addition:
+
+Overlay Signal and DATA
+
+Plot Ratio   Data/Prediction
+
+# Script : python/MakeResultHists.py  : takes 8 agument: I data_onservation , 4 for Signals, 3 bkg file (one file for EL and Mu both), 1 name of output file:
+
+TIP: best define the files internallly.
+
+run as python python/MakeResultHists.py
+
+dot SH script: makeDC.sh  :  put for each signal point: new confor for constant lifetime, different mass parameters
+
+#####LIMIT### DATACARD####
+
+##) Make HISTS for DATA CArd , (for shape analysis):
+    Script: python/LimitHistProducer.py  : takes data and Pridicted hists for bkg as required for Histmaking, and one signal at a time (implemented as loop, running one ti,e gives hists files for every signal differntly)
+
+
+put names of sigfiles in list of signal keys in the code : masses = ['g1800_chi1400', ....]
+    Makes histograms according to names in Data card template.
+
+##) Make data cards:
+
+    script : python/DataCardMaker.py
+
+    reads in the data card template: Produces data card fr every hist file fir shape analysis. (Loops over the differt lines and replaces text)
+    1) call fujnction from main() as : makeonedatacard( lifetime = '10', mass = '1400'), replaces the arguments to get his files, All should be in accordance with output from previos code.
+
+    simple read and write in tet fies code.
+
+  Copy Hists and Data card to : /nfs/dust/cms/user/singha/LLCh/LIMIT/CMSSW_8_1_0/src/HiggsAnalysis/CompLimit/
+
+
+
+Run as  : combine -M AsymptoticLimits datacard_1400LT10cm.txt
+
+
+Combined for all datacards: python/RunCombine.py  , stores output combine hists in CombineOutput/
